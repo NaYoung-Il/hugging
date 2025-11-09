@@ -1,40 +1,38 @@
 from fastapi import FastAPI
-# fastapi 가상환경 설정
-# (Ctrl + Shift + P -> Python: Select Interpreter -> 가상환경 선택)
 from pydantic import BaseModel
 from transformers import pipeline
 
-#fastapi 객체 생성
-app = FastAPI(title='감정 분석')
+# FastAPI 객체 생성
+app = FastAPI(title='질의응답 챗봇')
 
-# 멀티 언어 감성 분석 BERT 모델 불러오기
-sentimental=pipeline(
-    "sentiment-analysis",
-    model="nlptown/bert-base-multilingual-uncased-sentiment"
+# 'question-answering' 파이프라인 로드
+qa_pipeline = pipeline(
+    "question-answering",
+    model="ainize/klue-bert-base-mrc"
 )
 
-class ReviewSentimental(BaseModel):
-    text: str
+# QA 입력을 위한 Pydantic 모델 정의
+class QAInput(BaseModel):
+    question: str  # 질문
+    context: str   # 지문 (본문)
 
-# 요청 본문을 ReviewSentimental 모델로 받음
-@app.post('/predict')
-def predict(review: ReviewSentimental):
-    print("받은 문장 : ", review.text)
-    # review.text를 BERT 모델에 전달하여 결과를 받아옴.
-    result=sentimental(review.text)[0]
+@app.post('/ask')
+def ask(data: QAInput):
+    print("받은 질문 : ", data.question)
+    print("받은 지문 : ", data.context)
+
+    # QA 파이프라인 실행
+    # question과 context를 명시적으로 전달
+    result = qa_pipeline(question=data.question, context=data.context)
+    
     print(result)
+    # QA 결과 예시: {'score': 0.998, 'start': 10, 'end': 15, 'answer': '어떤 답변'}
 
-    label = result['label']
-    score = result['score']
-
-    if label in ["4 stars", "5 stars"]:
-        sentiment = "positive"
-    
-    elif label in ["1 star", "2 stars"]:
-        sentiment = "negative"
-
-    else:
-        sentiment = "neutral"
-    
-    response={"input": review.text, "label": sentiment, "score": round(score, 2)}
+    # 사용자가 원하는 형식으로 응답 구성
+    response = {
+        "input_question": data.question,
+        "context": data.context,
+        "answer": result['answer'],
+        "score": round(result['score'], 4) # 답변의 신뢰도 점수
+    }
     return response
